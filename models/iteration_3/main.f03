@@ -28,7 +28,7 @@ MODULE types_and_kinds
         REAL(DP), DIMENSION(:), ALLOCATABLE :: psin
     END TYPE domain
     TYPE, PUBLIC :: coeffs
-        REAL(DP), DIMENSION(:), POINTER :: chi, D, V, S_T, S_N
+        REAL(DP), DIMENSION(:), ALLOCATABLE :: chi, D, V, S_T, S_N
     END TYPE coeffs
     TYPE, PUBLIC :: simulation
         INTEGER(IP) :: nx, nghosts
@@ -40,15 +40,8 @@ MODULE types_and_kinds
         type(primitives) :: prim
         type(coeffs)     :: transparams
         type(domain)     :: grid
-        CONTAINS
-        PROCEDURE :: fetch_chi => fetch_chi_impl
     END TYPE simulation
-    CONTAINS
-    FUNCTION fetch_chi_impl(this) RESULT(chi)
-        CLASS(Simulation), INTENT(IN) :: this
-        REAL(DP), DIMENSION(:), POINTER :: chi
-        chi => this%transparams%chi
-    END FUNCTION fetch_chi_impl
+
 END MODULE types_and_kinds
 MODULE initialization
     USE types_and_kinds
@@ -125,12 +118,7 @@ END SUBROUTINE update_ghosts_and_bcs
     REAL(DP) FUNCTION max_pressure_gradient(sim)
         type(simulation), INTENT(INOUT) :: sim
 
-        ! chi = sim%fetch_chi() ! This might be really stupid...
-        ! CALL chi_model_emi(chi, x, T, gradT, sim%pedestal_loc, sim%c_etb, sim%chi_0)
-        ! D = sim%transparams%D
-        ! V = sim%transparams%V
-        ! S_T = sim%transparams%S_T
-        ! S_N = sim%transparams%S_N
+
 
 
     end FUNCTION max_pressure_gradient
@@ -155,7 +143,7 @@ END SUBROUTINE update_ghosts_and_bcs
         x = sim%grid%psin
         T = sim%prim%T
         n = sim%prim%n
-        chi = sim%fetch_chi() ! This might be really stupid...
+        chi = sim%transparams%chi ! This might be really stupid...
         ! CALL chi_model_emi(chi, x, T, gradT, sim%pedestal_loc, sim%c_etb, sim%chi_0)
         D = sim%transparams%D
         V = sim%transparams%V
@@ -238,33 +226,33 @@ END MODULE PHYSICS
 MODULE IO
     USE types_and_kinds
     IMPLICIT NONE
-CONTAINS
-    SUBROUTINE WRITE_HEADER(SIM)
-        TYPE(Simulation), INTENT(IN) :: sim
-        WRITE (*, '(A, 1X, F8.4)') 'nx,', sim%nx
-        WRITE (*, '(A, 1X, F8.4)') 'nghost,', sim%nghosts
-        WRITE (*, '(A, 1X, F8.4)') 'dx,', sim%dx
-        WRITE (*, '(A, 1X, F8.4)') 'chi_0,', sim%chi_0
-        WRITE (*, '(A, 1X, F8.4)') 'critical_grad,', sim%critical_grad
-        WRITE (*, '(A, 1X, F8.4)') 'power_input,', sim%power_input
-        WRITE (*, '(A, 1X, F8.4)') 'c_etb,', sim%c_etb
-        WRITE (*, '(A, 1X, F8.4)') 'c_crash,', sim%c_crash
-        WRITE (*, '(A, 1X, F8.4)') 'pedestal_loc,', sim%pedestal_loc
-        WRITE (*, '(A, 1X, F8.4)') 'alpha_critical,', sim%alpha_critical
-        WRITE (*, '(A, 1X, *(F8.4, 1X))') 'psin  ', sim%grid%psin
-    END SUBROUTINE WRITE_HEADER
-    SUBROUTINE WRITE_STATE(sim, tout)
-        TYPE(Simulation), INTENT(IN) :: sim
-        REAL(DP), INTENT(IN) :: tout
-        WRITE (*, '(A, 1X, F8.4)') 'tout  ', tout
-        WRITE (*, '(A, 1X, *(F8.4, 1X))') 'T     ', sim%prim%T
-        WRITE (*, '(A, 1X, *(F8.4, 1X))') 'n     ', sim%prim%n
-        WRITE (*, '(A, 1X, *(F8.4, 1X))') 'chi   ', sim%transparams%chi
-        WRITE (*, '(A, 1X, *(F8.4, 1X))') 'D     ', sim%transparams%D
-        WRITE (*, '(A, 1X, *(F8.4, 1X))') 'V     ', sim%transparams%V
-        WRITE (*, '(A, 1X, *(F8.4, 1X))') 'S_T   ', sim%transparams%S_T
-        WRITE (*, '(A, 1X, *(F8.4, 1X))') 'S_N   ', sim%transparams%S_N
-    END SUBROUTINE WRITE_STATE
+! CONTAINS
+!     SUBROUTINE WRITE_HEADER(SIM)
+!         TYPE(Simulation), INTENT(IN) :: sim
+!         WRITE (*, '(A, 1X, F8.4)') 'nx,', sim%nx
+!         WRITE (*, '(A, 1X, F8.4)') 'nghost,', sim%nghosts
+!         WRITE (*, '(A, 1X, F8.4)') 'dx,', sim%dx
+!         WRITE (*, '(A, 1X, F8.4)') 'chi_0,', sim%chi_0
+!         WRITE (*, '(A, 1X, F8.4)') 'critical_grad,', sim%critical_grad
+!         WRITE (*, '(A, 1X, F8.4)') 'power_input,', sim%power_input
+!         WRITE (*, '(A, 1X, F8.4)') 'c_etb,', sim%c_etb
+!         WRITE (*, '(A, 1X, F8.4)') 'c_crash,', sim%c_crash
+!         WRITE (*, '(A, 1X, F8.4)') 'pedestal_loc,', sim%pedestal_loc
+!         WRITE (*, '(A, 1X, F8.4)') 'alpha_critical,', sim%alpha_critical
+!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'psin  ', sim%grid%psin
+!     END SUBROUTINE WRITE_HEADER
+!     SUBROUTINE WRITE_STATE(sim, tout)
+!         TYPE(Simulation), INTENT(IN) :: sim
+!         REAL(DP), INTENT(IN) :: tout
+!         WRITE (*, '(A, 1X, F8.4)') 'tout  ', tout
+!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'T     ', sim%prim%T
+!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'n     ', sim%prim%n
+!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'chi   ', sim%transparams%chi
+!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'D     ', sim%transparams%D
+!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'V     ', sim%transparams%V
+!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'S_T   ', sim%transparams%S_T
+!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'S_N   ', sim%transparams%S_N
+!     END SUBROUTINE WRITE_STATE
 END MODULE IO
 MODULE plotting_helpers
     use types_and_kinds
