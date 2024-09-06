@@ -1,0 +1,14 @@
+__pycache__/
+figures/
+geometry_dir/
+models/iteration_1
+models/iteration_2
+models/iteration_15
+models/iteration_3/gf
+models/pymodels
+*.mod
+*.o
+jax_model/
+toy_models/
+inverse_model/
+slides/
