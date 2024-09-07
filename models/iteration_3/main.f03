@@ -24,6 +24,9 @@ MODULE types_and_kinds
     TYPE, PUBLIC :: primitives
         REAL(DP), DIMENSION(:), ALLOCATABLE :: T, n
     END TYPE primitives
+    TYPE, PUBLIC :: derived
+        REAL(DP), DIMENSION(:), ALLOCATABLE :: p, alpha
+    END TYPE derived
     TYPE, PUBLIC :: domain
         REAL(DP), DIMENSION(:), ALLOCATABLE :: psin
     END TYPE domain
@@ -40,6 +43,7 @@ MODULE types_and_kinds
         type(primitives) :: prim
         type(coeffs)     :: transparams
         type(domain)     :: grid
+        type(derived)    :: derived
     END TYPE simulation
 
 END MODULE types_and_kinds
@@ -111,17 +115,70 @@ SUBROUTINE update_ghosts_and_bcs(sim)
     sim%prim%n(1) = sim%prim%n(2)
     sim%prim%n(sim%nx+1+sim%nghosts) = sim%prim%n(sim%nx + sim%nghosts)
 
-    ! sim%transparams%chi(1) = sim%transparams%chi(2)
-    ! sim%transparams%chi(sim%nx+1+sim%nghosts) = sim%transparams%chi(sim%nx + sim%nghosts)
+    sim%transparams%chi(1) = sim%transparams%chi(2)
+    sim%transparams%chi(sim%nx+1+sim%nghosts) = sim%transparams%chi(sim%nx + sim%nghosts)
 
 END SUBROUTINE update_ghosts_and_bcs
-    REAL(DP) FUNCTION max_pressure_gradient(sim)
-        type(simulation), INTENT(INOUT) :: sim
+    SUBROUTINE mhd_stability_approximation(sim, t_lastelm)
+        TYPE(Simulation), INTENT(INOUT) :: sim
+        REAL(DP) :: psin_maxalpha, val_maxalpha
+        REAL(DP), INTENT(INOUT) :: t_lastelm
+        INTEGER(IP) :: idx_max_alpha
+        INTEGER(IP) :: i
+        ! Calculate pressure gradient and compute alpha
+        sim%derived%alpha = 0.0_DP
+        do i=1+sim%nghosts, sim%nx+sim%nghosts
+            sim%derived%alpha(i) = (sim%derived%p(i+1) - sim%derived%p(i-1)) / (2*sim%dx)
+        end do
+        ! sim%derived%alpha = abs(sim%derived%alpha) / abs(MAXVAL(sim%derived%alpha))
+        sim%derived%alpha = abs(sim%derived%alpha)
+        CALL find_maxval_alpha_in_pedestal(sim, idx_max_alpha, val_maxalpha, psin_maxalpha)
 
+        if ((sim%intra_elm_active .eqv. .True.) .AND. (t_lastelm < 0.0002_DP)) then
+            sim%intra_elm_active = .True.
+        else if ((sim%intra_elm_active .eqv. .True.) .AND. (t_lastelm >= 0.0002_DP)) then
+            sim%intra_elm_active = .False.
+        else
+            IF (val_maxalpha > sim%pressure_grad_threshold) THEN
+                sim%intra_elm_active = .TRUE.
+                t_lastelm = 0.0_DP
+            ELSE
+                sim%intra_elm_active = .FALSE.
+            END IF
+        end if
+        ! print *, val_maxalpha, psin_maxalpha, idx_max_alpha
+    END SUBROUTINE mhd_stability_approximation
+    SUBROUTINE find_maxval_alpha_in_pedestal(sim, idx_max_alpha, val_maxalpha, psin_maxalpha)
+        TYPE(Simulation), INTENT(IN) :: sim
+        INTEGER(IP), INTENT(OUT) :: idx_max_alpha
+        REAL(DP), INTENT(OUT) :: val_maxalpha, psin_maxalpha
+        INTEGER(IP) :: i
+        val_maxalpha = 0.0_DP
+        do i=1+sim%nghosts, sim%nx+sim%nghosts
+            ! Check if in pedestal by comparing psin to sim%pedestal_loc
+            if (sim%grid%psin(i) > sim%pedestal_loc) then
+                if (sim%derived%alpha(i) > val_maxalpha) then
+                    idx_max_alpha = i
+                    val_maxalpha = sim%derived%alpha(i)
+                    psin_maxalpha = sim%grid%psin(i)
+                end if
+            end if
+        end do
+    END SUBROUTINE find_maxval_alpha_in_pedestal
+    REAL(DP) FUNCTION find_maxval_alpha_in_pedestal_func(sim)
+        TYPE(Simulation), INTENT(IN) :: sim
+        INTEGER(IP) :: i
+        REAL(DP) :: maxval_alpha
+        maxval_alpha = 0.0_DP
+        do i=1+sim%nghosts, sim%nx+sim%nghosts
+            ! Check if in pedestal by comparing psin to sim%pedestal_loc
+            if (sim%grid%psin(i) > sim%pedestal_loc) then
+                maxval_alpha = MAX(maxval_alpha, sim%derived%alpha(i))
+            end if
+        end do
+        find_maxval_alpha_in_pedestal_func = maxval_alpha
+    END FUNCTION find_maxval_alpha_in_pedestal_func
 
-
-
-    end FUNCTION max_pressure_gradient
     SUBROUTINE computetimestep(sim, dt)
         ! CFL condition for diffusion equation
         TYPE(Simulation), INTENT(IN) :: sim
@@ -166,13 +223,14 @@ END SUBROUTINE update_ghosts_and_bcs
             d2ndx2(i) = (n(i+1) - 2.0_DP*n(i) + n(i-1)) / (dx*dx)
         end do
         ! Update interior cells
-        !
         do i=1+sim%nghosts, sim%nx+sim%nghosts
             T(i) = T(i) + dt * (x(i) * (chi(i) * d2Tdx2(i) + dChidx(i)*dTdx(i)) + chi(i)*dTdx(i) + S_T(i))
             n(i) = n(i) + dt * (D(i) * d2ndx2(i) + V(i)*dndx(i) + dDdx(i)*dndx(i) + dndx(i)*dVdx(i) + S_N(i))
         end do
         sim%prim%T = T
         sim%prim%n = n
+        ! Pressure is 2*n*t*boltzmann
+        sim%derived%P = (2.0_DP *(sim%prim%T*11604.5_DP) * (n / 10.0_DP)  * 1.38064852_DP) / 1000.0_DP
     END SUBROUTINE update
     SUBROUTINE update_transparams(sim)
         TYPE(Simulation), INTENT(INOUT) :: sim
@@ -187,8 +245,12 @@ END SUBROUTINE update_ghosts_and_bcs
             gradT(i) = (T(i+1) - T(i-1)) / (2.0_DP*dx)
             gradN(i) = (n(i+1) - n(i-1)) / (2.0_DP*dx)
         end do
-        call chi_model_emi(chi, x, T, gradT, sim%pedestal_loc, sim%c_etb, sim%chi_0)
-
+        ! Update parameters based on if ELM is triggered or not
+        if (sim%intra_elm_active .eqv. .True.) then
+            call critical_gradient_core(chi, gradT, sim%chi_0)
+        else
+            call chi_model_emi(chi, x, T, gradT, sim%pedestal_loc, sim%c_etb, sim%chi_0)
+        end if
         sim%transparams%chi = chi
     END SUBROUTINE update_transparams
     SUBROUTINE chi_model_emi(chi, x, T, gradT, pedestal_loc, cx, chi_0)
@@ -242,18 +304,26 @@ MODULE plotting_helpers
     INTEGER(c_int), PARAMETER :: plot_width=0.9*(ww/3), plot_height=0.9*(wh/3)
     REAL(c_float), PARAMETER ::  plot_thicc=3.0
 CONTAINS
-    SUBROUTINE initialize_primtive_plots(tp, np, pp)
-        TYPE(Rectangle), INTENT(INOUT)  :: tp, np, pp
+    SUBROUTINE initialize_primtive_plots(tp, np, coefp, pp)
+        TYPE(Rectangle), INTENT(INOUT)  :: tp, np, pp, coefp
+        ! Top Left
         tp%x      = border_padding
         tp%y      = border_padding
         tp%width  = plot_width
         tp%height = plot_height
+        ! Top Middle
         np%x      = ww / 2 - plot_width / 2
         np%y      = border_padding
         np%width  = plot_width
         np%height = plot_height
-        pp%x      = ww - plot_width - border_padding
-        pp%y      = border_padding
+        ! Top Right
+        coefp%x      = ww - plot_width - border_padding
+        coefp%y      = border_padding
+        coefp%width  = plot_width
+        coefp%height = plot_height
+        ! Middle Left
+        pp%x      = border_padding
+        pp%y      = wh / 2 - plot_height / 2
         pp%width  = plot_width
         pp%height = plot_height
     END SUBROUTINE initialize_primtive_plots
@@ -267,7 +337,7 @@ CONTAINS
         TYPE(RECTANGLE), INTENT(IN) :: rect
         REAL(DP), INTENT(IN) :: x(:), y(:)
         REAL, INTENT(IN) :: y_l_lim, y_u_lim
-        CHARACTER(len=4) :: charbuff
+        CHARACTER(len=6) :: charbuff
         INTEGER(c_int32_t), INTENT(IN) :: color
         REAL(DP), INTENT(INOUT) :: buff_x(:), buff_y(:)
         integer(IP) :: i
@@ -289,11 +359,11 @@ CONTAINS
         call draw_circle(int(buff_x(1) + rect%x), int(buff_y(1)+ rect%y), 2.0, BLUE)
         call draw_circle(int(buff_x(size(x)) + rect%x), int(buff_y(size(x))+ rect%y), 2.0, BLUE)
 
-        write (charbuff, '(F4.2)') min_x
+        write (charbuff, '(F6.2)') min_x
         call draw_text(charbuff//C_NULL_CHAR, int(rect%x), int(rect%y + rect%height), 20, BLACK)
-        write (charbuff, '(F4.2)') max_x
+        write (charbuff, '(F6.2)') max_x
         call draw_text(charbuff//C_NULL_CHAR, int(rect%x + rect%width), int(rect%y + rect%height), 20, BLACK)
-        write (charbuff, '(F4.2)') max_y
+        write (charbuff, '(F6.2)') max_y
         call draw_text(charbuff//C_NULL_CHAR, int(rect%x) - border_padding, int(rect%y), 20, BLACK)
 
     END SUBROUTINE plot_profile_given_subplot
@@ -309,9 +379,10 @@ PROGRAM toy
     use plotting_helpers
     IMPLICIT NONE
     TYPE(Simulation) :: sim
-    TYPE(Rectangle)  :: temperature_plot, density_plot, pressure_plot
+    TYPE(Rectangle)  :: temperature_plot, density_plot, pressure_grad_plot, transparam_plot
     character(len=12) :: twritten
     REAL(DP) :: tout=0.0, dt=0.01, wout=0.0, wstep=0.00005, totalsimtime=1.0_dp
+    REAL(DP) :: t_lastelm=0.0_DP ! 200 microseconds -> 0.0002
     type(Vector2) :: vec_buffer
     REAL(DP), ALLOCATABLE :: canvas_data_x(:), canvas_data_y(:)
     INTEGER :: int_buffer
@@ -328,6 +399,7 @@ PROGRAM toy
 
     ALLOCATE(sim%prim%T(sim%nx+2*sim%nghosts), sim%prim%n(sim%nx+2*sim%nghosts))
     ALLOCATE(sim%grid%psin(sim%nx+2*sim%nghosts))
+    ALLOCATE(sim%derived%p(sim%nx+2*sim%nghosts), sim%derived%alpha(sim%nx+2*sim%nghosts))
     ALLOCATE(sim%transparams%chi(sim%nx+2*sim%nghosts), sim%transparams%D(sim%nx+2*sim%nghosts), sim%transparams%V(sim%nx+2*sim%nghosts), sim%transparams%S_T(sim%nx+2*sim%nghosts), sim%transparams%S_N(sim%nx+2*sim%nghosts))
     ALLOCATE(canvas_data_x(sim%nx+2*sim%nghosts), canvas_data_y(sim%nx+2*sim%nghosts))
     ! Initialize arrays
@@ -344,6 +416,7 @@ PROGRAM toy
     sim%transparams%S_T = 0.0_DP
     call LINEAR_GAUSSIAN(sim%grid%psin(1+sim%nghosts:sim%nx+sim%nghosts), sim%transparams%S_T(1+sim%nghosts:sim%nx+sim%nghosts), sim%power_input*0.01_DP, 0.4_DP, 0.2_DP, 0.8_DP)
     CALL MTANH(sim%grid%psin, sim%prim%T, 0.50173193_DP, 0.0_DP, 0.14852205_DP, 0.98343676_DP, 0.04383409_DP)
+
     CALL RSQUARED(sim%grid%psin, sim%prim%n, 5.0_DP)
     sim%prim%n(sim%nx + 2*sim%nghosts) = 0.0_DP
     ! print *, sim%prim%n(sim%nx - 1), sim%prim%n(sim%nx), sim%prim%n(sim%nx + 1), sim%prim%n(sim%nx + 2)
@@ -357,7 +430,7 @@ PROGRAM toy
     call update_transparams(sim)
     ! Call update transparams
     call update_ghosts_and_bcs(sim)
-    call initialize_primtive_plots(temperature_plot, density_plot, pressure_plot)
+    call initialize_primtive_plots(temperature_plot, density_plot, transparam_plot, pressure_grad_plot)
 
     call init_window(ww, wh, "Fortran GOTY")
     ! call set_target_fps(1000)
@@ -365,17 +438,20 @@ PROGRAM toy
     do while (.not. window_should_close())
         CALL computetimestep(sim, dt)
         tout = tout + dt
+        t_lastelm = t_lastelm + dt
         call update_transparams(sim)
         call update(sim, dt)
         call update_ghosts_and_bcs(sim)
-        ! call mhd_stability_approximation(sim)
+        ! INTER VS INTRA ELM,
+        call mhd_stability_approximation(sim, t_lastelm)
 
         call begin_drawing()
         call clear_background(RAYWHITE)
         call plot_profile_given_subplot(temperature_plot, sim%grid%psin, SIM%PRIM%T, canvas_data_x, canvas_data_y, 0.0, 2.5, NOVABLACK)
         call plot_profile_given_subplot(density_plot, sim%grid%psin, SIM%PRIM%n, canvas_data_x, canvas_data_y,  0.0, 6.0, NOVARED)
-        call plot_profile_given_subplot(pressure_plot, sim%grid%psin, SIM%transparams%chi, canvas_data_x, canvas_data_y,  0.0, 5.0, NOVABLACK)
-        call plot_profile_given_subplot(pressure_plot, sim%grid%psin, SIM%transparams%D, canvas_data_x, canvas_data_y,  0.0, 5.0, NOVARED)
+        call plot_profile_given_subplot(transparam_plot, sim%grid%psin, SIM%transparams%chi, canvas_data_x, canvas_data_y,  0.0, 5.0, NOVABLACK)
+        call plot_profile_given_subplot(transparam_plot, sim%grid%psin, SIM%transparams%D, canvas_data_x, canvas_data_y,  0.0, 5.0, NOVARED)
+        call plot_profile_given_subplot(pressure_grad_plot, sim%grid%psin, SIM%derived%alpha, canvas_data_x, canvas_data_y,  0.0, 50.0, NOVAGREEN)
         ! BUFFER OVERFLOW HERE.... WHAT THE FUCK
 
         write (twritten, "(A4, F8.7, A1)") "t = ", tout
@@ -384,7 +460,8 @@ PROGRAM toy
 
         call draw_rectangle_lines_ex(temperature_plot, plot_thicc, BLACK)
         call draw_rectangle_lines_ex(density_plot, plot_thicc, BLACK)
-        call draw_rectangle_lines_ex(pressure_plot, plot_thicc, BLACK)
+        call draw_rectangle_lines_ex(transparam_plot, plot_thicc, BLACK)
+        call draw_rectangle_lines_ex(pressure_grad_plot, plot_thicc, BLACK)
 
         call end_drawing()
     end do
