@@ -111,8 +111,8 @@ SUBROUTINE update_ghosts_and_bcs(sim)
     sim%prim%n(1) = sim%prim%n(2)
     sim%prim%n(sim%nx+1+sim%nghosts) = sim%prim%n(sim%nx + sim%nghosts)
 
-    sim%transparams%chi(1) = sim%transparams%chi(2)
-    sim%transparams%chi(sim%nx+1+sim%nghosts) = sim%transparams%chi(sim%nx + sim%nghosts)
+    ! sim%transparams%chi(1) = sim%transparams%chi(2)
+    ! sim%transparams%chi(sim%nx+1+sim%nghosts) = sim%transparams%chi(sim%nx + sim%nghosts)
 
 END SUBROUTINE update_ghosts_and_bcs
     REAL(DP) FUNCTION max_pressure_gradient(sim)
@@ -134,9 +134,11 @@ END SUBROUTINE update_ghosts_and_bcs
         dt = dx*dx / (4.0_DP * MAX(maxchi, maxD + maxV))
     END SUBROUTINE computetimestep
     SUBROUTINE update(sim, dt)
+        ! Forward Euler Update
         type(simulation), INTENT(INOUT) :: sim
         REAL(DP), INTENT(IN) :: dt
-        REAL(DP), DIMENSION(sim%nx+2*sim%nghosts) :: T, n, chi, D, V, S_T, S_N, x, gradT, gradN, fluxT, fluxN
+        REAL(DP), DIMENSION(sim%nx+2*sim%nghosts) :: T, n, chi, D, V, S_T, S_N, x
+        REAL(DP), DIMENSION(sim%nx+2*sim%nghosts) :: d2Tdx2, d2ndx2, dTdx, dndx, dChidx, dDdx, dVdx
         REAL(DP) :: dx
         INTEGER(IP) :: i
         dx = sim%dx
@@ -150,18 +152,25 @@ END SUBROUTINE update_ghosts_and_bcs
         S_T = sim%transparams%S_T
         S_N = sim%transparams%S_N
         ! Update interior cells
-        DO i=1+sim%nghosts, sim%nx+sim%nghosts
-            ! Calculate grad T and grad N
-            gradT(i) = (T(i+1) - T(i-1)) / (2.0_DP*dx)
-            gradN(i) = (n(i+1) - n(i-1)) / (2.0_DP*dx)
-            ! Calculate fluxes
-            fluxT(i) = chi(i) * x(i) * gradT(i)
-            fluxN(i) = D(i) * gradN(i) + V(i)*n(i)
-            ! Update T and n
-            T(i) = T(i) + dt * ((fluxT(i+1) - fluxT(i-1) ) / (2.0_DP*dx) + S_T(i)) ! perhaps missing dx in denominator
-            n(i) = n(i) + dt * ((fluxN(i+1) - fluxN(i-1) ) / (2.0_DP*dx)+ S_N(i))
-        END DO
-        sim%transparams%chi = chi
+        ! Compute first order central differnces for gradients
+        do i=1+sim%nghosts, sim%nx+sim%nghosts
+            dTdx(i) = (T(i+1) - T(i-1)) / (2.0_DP*dx)
+            dndx(i) = (n(i+1) - n(i-1)) / (2.0_DP*dx)
+            dChidx(i) = (chi(i+1) - chi(i-1)) / (2.0_DP*dx)
+            dDdx(i) = (D(i+1) - D(i-1)) / (2.0_DP*dx)
+            dVdx(i) = (V(i+1) - V(i-1)) / (2.0_DP*dx)
+        end do
+        ! Compute second order central differnces for temp and density
+        do i=1+sim%nghosts, sim%nx+sim%nghosts
+            d2Tdx2(i) = (T(i+1) - 2.0_DP*T(i) + T(i-1)) / (dx*dx)
+            d2ndx2(i) = (n(i+1) - 2.0_DP*n(i) + n(i-1)) / (dx*dx)
+        end do
+        ! Update interior cells
+        !
+        do i=1+sim%nghosts, sim%nx+sim%nghosts
+            T(i) = T(i) + dt * (x(i) * (chi(i) * d2Tdx2(i) + dChidx(i)*dTdx(i)) + chi(i)*dTdx(i) + S_T(i))
+            n(i) = n(i) + dt * (D(i) * d2ndx2(i) + V(i)*dndx(i) + dDdx(i)*dndx(i) + dndx(i)*dVdx(i) + S_N(i))
+        end do
         sim%prim%T = T
         sim%prim%n = n
     END SUBROUTINE update
@@ -197,7 +206,7 @@ END SUBROUTINE update_ghosts_and_bcs
         REAL(DP), INTENT(IN) :: gradT(:), chi_0! =1.0_DP
         REAL(DP), INTENT(INOUT) :: chi(:)
         REAL(DP) :: a=0.5_DP, k=2.0_DP
-        REAL(DP) :: Tgrad_crit = 1.0_DP
+        REAL(DP) :: Tgrad_crit = 0.2_DP
         INTEGER(IP) :: i
         do i=1, size(chi)
             if (abs(gradT(i)) > abs(Tgrad_crit)) then
@@ -223,37 +232,6 @@ END SUBROUTINE update_ghosts_and_bcs
         end do
     END SUBROUTINE CHI_PED_FACTOR
 END MODULE PHYSICS
-MODULE IO
-    USE types_and_kinds
-    IMPLICIT NONE
-! CONTAINS
-!     SUBROUTINE WRITE_HEADER(SIM)
-!         TYPE(Simulation), INTENT(IN) :: sim
-!         WRITE (*, '(A, 1X, F8.4)') 'nx,', sim%nx
-!         WRITE (*, '(A, 1X, F8.4)') 'nghost,', sim%nghosts
-!         WRITE (*, '(A, 1X, F8.4)') 'dx,', sim%dx
-!         WRITE (*, '(A, 1X, F8.4)') 'chi_0,', sim%chi_0
-!         WRITE (*, '(A, 1X, F8.4)') 'critical_grad,', sim%critical_grad
-!         WRITE (*, '(A, 1X, F8.4)') 'power_input,', sim%power_input
-!         WRITE (*, '(A, 1X, F8.4)') 'c_etb,', sim%c_etb
-!         WRITE (*, '(A, 1X, F8.4)') 'c_crash,', sim%c_crash
-!         WRITE (*, '(A, 1X, F8.4)') 'pedestal_loc,', sim%pedestal_loc
-!         WRITE (*, '(A, 1X, F8.4)') 'alpha_critical,', sim%alpha_critical
-!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'psin  ', sim%grid%psin
-!     END SUBROUTINE WRITE_HEADER
-!     SUBROUTINE WRITE_STATE(sim, tout)
-!         TYPE(Simulation), INTENT(IN) :: sim
-!         REAL(DP), INTENT(IN) :: tout
-!         WRITE (*, '(A, 1X, F8.4)') 'tout  ', tout
-!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'T     ', sim%prim%T
-!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'n     ', sim%prim%n
-!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'chi   ', sim%transparams%chi
-!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'D     ', sim%transparams%D
-!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'V     ', sim%transparams%V
-!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'S_T   ', sim%transparams%S_T
-!         WRITE (*, '(A, 1X, *(F8.4, 1X))') 'S_N   ', sim%transparams%S_N
-!     END SUBROUTINE WRITE_STATE
-END MODULE IO
 MODULE plotting_helpers
     use types_and_kinds
     use iso_c_binding, only: c_int, c_int32_t, C_NULL_CHAR, C_NULL_PTR, c_loc, c_float
@@ -325,7 +303,6 @@ PROGRAM toy
     use types_and_kinds
     use physics
     use initialization
-    use io
     use iso_c_binding, only: c_int, c_int32_t, C_NULL_CHAR, C_NULL_PTR, c_loc, c_float
     use raylib
     use raymath
