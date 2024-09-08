@@ -24,6 +24,7 @@ raymath.o:raymath.f03
 raylib.o:raymath.o
 	${FC} ${OPTGUI} -c ${FFLAGS} raylib.f03
 
+#
 dashboard.o:raylib.o physics.o dashboard.f03
 	${FC} ${OPTGUI} -c ${FFLAGS} dashboard.f03
 	${FC} ${OPTGUI} -fsanitize=address -o  ${BINGUI} dashboard.o helpers.o physics.o raylib.o raymath.o ${LIBS}
@@ -34,10 +35,10 @@ allclean:
 	rm *.o
 	rm *.mod
 	rm ${BIN}
-	rm ${BINGUI}
-
+	rm output.txt
 clean:
 	rm *.mod
 	rm *.o
 	rm ${BIN}
-	rm ${BINGUI}
+	rm output.txt
+	rm simulation_state.pkl

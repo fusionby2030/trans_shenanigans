@@ -140,8 +140,13 @@ END SUBROUTINE update_ghosts_and_bcs
         REAL(DP), INTENT(INOUT) :: chi(:)
         INTEGER(IP) :: i
         REAL(DP) :: factor_pedestal_chi(size(gradT))
+        REAL(DP) :: amplitude
         ! TODO: move pedestal loc...
-        call critical_gradient_core(chi, gradT, sim%chi_0)
+        amplitude = sim%c_crash / (SQRT(2*PI*sim%pedestal_width**2))
+        call GAUSSIAN(sim%grid%psin, chi, amplitude, sim%pedestal_loc + sim%pedestal_width, sim%pedestal_width)
+        chi = chi + sim%chi_0
+        ! print *, amplitude, chi(sim%nx)
+        ! call critical_gradient_core(chi, gradT, sim%chi_0)
         ! call CHI_PED_FACTOR(sim%grid%psin, sim%pedestal_loc, sim%c_crash, factor_pedestal_chi)
         ! factor_pedestal_chi = 1.0_DP / factor_pedestal_chi
         ! chi = chi*factor_pedestal_chi
@@ -204,8 +209,8 @@ END SUBROUTINE update_ghosts_and_bcs
         INTEGER(IP) :: i
         dx = sim%dx
         x = sim%grid%psin
-        chi = sim%chi_0
-        D = sim%chi_0 + 2.0_DP
+        chi = sim%transparams%chi
+        D = sim%transparams%D !  + 2.0_DP
 
         do i=2, sim%nx+sim%nghosts
             gradT(i) = (sim%prim%T(i+1) - sim%prim%T(i-1)) / (2.0_DP*dx)
@@ -213,18 +218,17 @@ END SUBROUTINE update_ghosts_and_bcs
         end do
         ! Update parameters based on if ELM is triggered or not
         if (sim%intra_elm_active .eqv. .True.) then
-            ! call chi_intra_elm(sim, chi, gradT)
-            call critical_gradient_core(chi, gradT, sim%chi_0)
-            V = 1.0_DP
+            call chi_intra_elm(sim, gradT, chi)
+            ! call critical_gradient_core(chi, gradT, sim%chi_0)
+            ! V = 1.0_DP
         else
-            ! Update chi
             call chi_model_emi(chi, x, sim%prim%T, gradT, sim%pedestal_loc, sim%c_etb, sim%chi_0)
             ! Update D
-            call D_interelm(sim, D)
-            V = x**5
+            ! call D_interelm(sim, D)
+            ! V = x**5
         end if
         sim%transparams%chi = chi
-        sim%transparams%D = D
-        sim%transparams%V = V
+        ! sim%transparams%D = D
+        ! sim%transparams%V = V
     END SUBROUTINE update_transparams
 END MODULE PHYSICS

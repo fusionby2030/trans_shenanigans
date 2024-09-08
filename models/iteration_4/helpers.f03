@@ -2,6 +2,7 @@ MODULE types_and_kinds
     IMPLICIT NONE
     INTEGER, PARAMETER :: dp = SELECTED_REAL_KIND(15, 307)
     INTEGER, PARAMETER :: ip = SELECTED_INT_KIND(8)
+    REAL(DP), PARAMETER :: PI = 4.0_DP * ATAN(1.0_DP)
     TYPE, PUBLIC :: primitives
         REAL(DP), DIMENSION(:), ALLOCATABLE :: T, n
     END TYPE primitives
@@ -19,7 +20,7 @@ MODULE types_and_kinds
         REAL(DP) :: chi_0, critical_grad, dx
         REAL(DP) :: power_input
         REAL(DP) :: c_etb, c_crash
-        REAL(DP) :: pedestal_loc, alpha_critical, pressure_grad_threshold
+        REAL(DP) :: pedestal_loc, alpha_critical, pressure_grad_threshold, pedestal_width
         LOGICAL :: intra_elm_active
         type(primitives) :: prim
         type(coeffs)     :: transparams

@@ -103,10 +103,11 @@ PROGRAM toy
     sim%nghosts = 1
     sim%power_input = 10.5_DP
     sim%intra_elm_active = .FALSE.
-    sim%pedestal_loc = 0.98343676_DP  - 0.04383409_DP
-    sim%c_etb = 0.0145_DP
-    sim%c_crash = 0.5_DP
-    sim%pressure_grad_threshold = 225.0_DP
+    sim%pedestal_width = 0.04383409_DP
+    sim%pedestal_loc = 0.98343676_DP  - sim%pedestal_width
+    sim%c_etb = 0.0135_DP
+    sim%c_crash = 0.46_DP
+    sim%pressure_grad_threshold = 220.0_DP
     sim%chi_0 = 1.5_DP
     ! ------
 
@@ -140,10 +141,10 @@ PROGRAM toy
     sim%prim%n(sim%nx + 2*sim%nghosts) = 0.0_DP
     ! print *, sim%prim%n(sim%nx - 1), sim%prim%n(sim%nx), sim%prim%n(sim%nx + 1), sim%prim%n(sim%nx + 2)
 
-    sim%transparams%D   = sim%chi_0 ! 1.2_DP
+    sim%transparams%D   = 0.0_DP ! sim%chi_0 ! 1.2_DP
 
     sim%transparams%V   = 0.0_DP
-    sim%transparams%S_N = 20.0_DP
+    sim%transparams%S_N = 0.0_DP
     sim%transparams%Chi = 0.5_DP
     !CALL RSQUARED(sim%grid%psin(1+sim%nghosts:sim%nx+sim%nghosts), sim%transparams%Chi(1+sim%nghosts:sim%nx+sim%nghosts), 5.0_DP)
 
@@ -187,7 +188,9 @@ PROGRAM toy
         write (twritten, "(A4, F8.7, A1)") "t = ", tout
         int_buffer = measure_text(twritten, 20)
         call draw_text(twritten ,ww/2 - measure_text(trim(twritten), 20) / 2, 0, 20,BLACK)
-
+        if (sim%intra_elm_active .eqv. .True.) then
+            call draw_text('ELM', ww/2, wh/2, 30, RED)
+        end if
         call draw_rectangle_lines_ex(temperature_plot, plot_thicc, BLACK)
         call draw_rectangle_lines_ex(density_plot, plot_thicc, BLACK)
         call draw_rectangle_lines_ex(transparam_plot, plot_thicc, BLACK)
