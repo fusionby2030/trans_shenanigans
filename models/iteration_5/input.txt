@@ -1,0 +1,7 @@
+c_crash=1.5
+c_etb=1.0
+power_input=150.1
+nx=100
+chi_0=1.0
+tgrad_crit=1.5
+pressure_grad_threshold=250.0
