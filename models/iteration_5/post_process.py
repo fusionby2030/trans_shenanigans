@@ -168,17 +168,28 @@ N = len(simulation_state.mode_flags)
 dt = simulation_state.time_steps[1] - simulation_state.time_steps[0]
 num_time_steps_intra_elm =  int(0.0002 / dt)
 # Only look at the last half of the simulation
-# Find peaks in alpha signal
-#
+# Find peaks in temperature signal signal
 max_alpha = np.max(simulation_state.alpha, axis=1)
 maxmax_alpha = min(np.max(max_alpha[N//2:]), simulation_state.pressure_grad_threshold)
 # peaks, _ = find_peaks(max_alpha, height=maxmax_alpha-0.75) # simulation_state.pressure_grad_threshold-0.5
 ped_temperature = simulation_state.temperature[:, ped_idx]
+ped_density     = simulation_state.density[:, ped_idx]
+ped_pressure    = simulation_state.pressure[:, ped_idx]
+
 peaks, _ = find_peaks(ped_temperature) # , height=maxmax_alpha-0.75) # simulation_state.pressure_grad_threshold-0.5
 
 elm_freq = sum(peaks >= N//2) / (simulation_state.time_steps[-1] - simulation_state.time_steps[N//2]) #  - simulation_state.time_steps[N//2])
 # print(peaks, simulation_state.time_steps[peaks], elm_freq)
 # print(len(peaks), elm_freq)
+
+avg_pre_elm_teped = np.mean(ped_temperature[peaks[peaks >= N//2]])
+std_pre_elm_teped = np.std(ped_temperature[peaks[peaks >= N//2]])
+
+avg_pre_elm_neped = np.mean(ped_density[peaks[peaks >= N//2]])
+std_pre_elm_neped = np.std(ped_density[peaks[peaks >= N//2]])
+
+avg_pre_elm_peped = np.mean(ped_pressure[peaks[peaks >= N//2]])
+std_pre_elm_peped = np.std(ped_pressure[peaks[peaks >= N//2]])
 
 if len(peaks) == 0:
     peaks = [1, N//2, N//2 +N//4, N//2 +N//4, N//2 +N//4]
@@ -188,8 +199,18 @@ with open('./postprocessed_elmcount', 'w') as file:
     file.write(f'c_etb={simulation_state.c_etb}\n')
     file.write(f'c_crash={simulation_state.c_crash}\n')
     file.write(f'elm_freq={elm_freq}\n')
-    file.write(f'power_input={simulation_state.power_input}')
-print(f'ELM frequency: {elm_freq}, total elms encountered: {len(peaks)}')
+    file.write(f'power_input={simulation_state.power_input}\n')
+    file.write(f'teped={avg_pre_elm_teped}\n')
+    file.write(f'teped_std={std_pre_elm_teped}\n')
+    file.write(f'neped={avg_pre_elm_neped}\n')
+    file.write(f'neped_std={std_pre_elm_neped}\n')
+    file.write(f'peped={avg_pre_elm_peped}\n')
+    file.write(f'peped_std={std_pre_elm_peped}\n')
+    
+
+print(f'c_etb={simulation_state.c_etb:.4}, c_crash={simulation_state.c_crash:.4}')
+print(f'ELM frequency: {elm_freq:.4}, total elms encountered: {len(peaks)}')
+print(f'Teped = {avg_pre_elm_teped:.4}')
 
 if sys.argv[-1] == 'p': 
     dash, axs = plt.subplots(2, 3, figsize=(12, 6))

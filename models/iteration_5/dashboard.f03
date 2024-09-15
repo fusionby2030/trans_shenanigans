@@ -77,6 +77,36 @@ CONTAINS
         write (charbuff, '(F6.2)') max_y
         call draw_text(charbuff//C_NULL_CHAR, int(rect%x), int(rect%y), 20, BLACK)
     END SUBROUTINE plot_profile_given_subplot
+    SUBROUTINE plot_axvline(rect, x, color, x_loc_vline)
+        TYPE(RECTANGLE), INTENT(IN) :: rect
+        REAL(DP), INTENT(IN) :: x(:)
+        INTEGER(c_int32_t), INTENT(IN) :: color
+        REAL(DP), INTENT(IN) :: x_loc_vline
+        CHARACTER(len=6) :: charbuff
+        REAL(DP) :: max_x, min_x
+        REAL(DP) :: buff_x
+        max_x = maxval(x) 
+        min_x = minval(x) 
+        buff_x = (max_x - x_loc_vline) / (max_x - min_x )
+        buff_x = 1-buff_x
+        buff_x = buff_x * rect%width
+        call draw_line(int(buff_x + rect%x), int(rect%y), int(buff_x + rect%x), int(rect%y + rect%height), color)
+    END SUBROUTINE plot_axvline
+    SUBROUTINE plot_axhline(rect, y, color, y_loc_vline)
+        TYPE(RECTANGLE), INTENT(IN) :: rect
+        REAL(DP), INTENT(IN) :: y(:)
+        INTEGER(c_int32_t), INTENT(IN) :: color
+        REAL(DP), INTENT(IN) :: y_loc_vline
+        CHARACTER(len=6) :: charbuff
+        REAL(DP) :: max_y, min_y
+        REAL(DP) :: buff_y
+        max_y = 1.0_DP ! maxval(y) 
+        min_y = 0.0_DP ! minval(y) 
+        buff_y = (max_y - y_loc_vline) / (max_y - min_y )
+        buff_y = 1-buff_y
+        buff_y = buff_y * rect%height
+        call draw_line(int(rect%x), int(buff_y + rect%y), int(rect%x + rect%width), int(buff_y + rect%y), color)
+    END SUBROUTINE plot_axhline
 END MODULE plotting_helpers
 
 PROGRAM toy
@@ -143,6 +173,12 @@ PROGRAM toy
             call plot_profile_given_subplot(transparam_plot, sim%grid%psin, SIM%transparams%chi, canvas_data_x, canvas_data_y,  0.0, 6.0, NOVABLACK)
             call plot_profile_given_subplot(transparam_plot, sim%grid%psin, SIM%transparams%D, canvas_data_x, canvas_data_y,  0.0, 5.0, NOVARED)
             call plot_profile_given_subplot(pressure_grad_plot, sim%grid%psin, SIM%derived%alpha, canvas_data_x, canvas_data_y,  0.0, real(sim%pressure_grad_threshold), NOVAGREEN)
+            
+            call plot_axhline(temperature_plot, sim%prim%T, BLACK, 0.50173193_DP)
+            call plot_axvline(temperature_plot, sim%grid%psin, BLACK, sim%pedestal_loc)
+            call plot_axvline(transparam_plot, sim%grid%psin, BLACK, sim%pedestal_loc)
+            call plot_axvline(density_plot, sim%grid%psin, BLACK, sim%pedestal_loc)
+            call plot_axvline(pressure_grad_plot, sim%grid%psin, BLACK, sim%pedestal_loc + sim%pedestal_width)
             ! call plot_profile_given_subplot(pedtimetrace_plot, plot_arrays(3, :), plot_arrays(1, :), canvas_data_x, canvas_data_y,  0.0, 1.5, NOVABLACK)
             write (twritten, "(A4, F8.7, A1)") "t = ", tout
             int_buffer = measure_text(twritten, 20)

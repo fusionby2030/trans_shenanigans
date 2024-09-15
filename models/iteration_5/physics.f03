@@ -171,7 +171,7 @@ SUBROUTINE chi_inter_model(sim, gradT, chi)
     REAL(DP), DIMENSION(sim%nx+2*sim%nghosts), INTENT(IN) :: gradT
     REAL(DP), DIMENSION(sim%nx+2*sim%nghosts), INTENT(INOUT) :: chi
     call critical_gradient_core(chi, gradT, sim%chi_0, sim%tgrad_crit)    
-    call CHI_ETB_BEZIER(chi(sim%pedestal_idx), sim%pedestal_loc, 0.001_DP, 1.0_DP, sim%c_etb, sim%grid%psin, chi)
+    call CHI_ETB_BEZIER(chi(sim%pedestal_idx), sim%pedestal_loc, 0.05_DP, 1.0_DP, sim%c_etb, sim%grid%psin, chi)
     ! Make sure it is always positive 
     ! chi = MAX(chi, 0.0_DP)
 END SUBROUTINE chi_inter_model
