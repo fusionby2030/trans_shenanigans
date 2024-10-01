@@ -1,0 +1,16 @@
+#!/bin/bash
+#SBATCH --job-name=ReducedModelSample
+#SBATCH --account=project_2009007
+#SBATCH --time=03:00:00
+#SBATCH --partition=medium 
+#SBATCH --array=1-10
+#SBATCH --ntasks=1
+
+module load python-data
+python3 simple_full_run.py -shot_num=83624 -ccrash=1.456 -cgrowth=2.053 -probable=2 --loc_c_crash=0.5 --loc_c_growth=0.1
+
+# 83625 2.902 2.263 sample
+# 83628 1.043 2.053 sample
+# 83630 1.622 1.211 sample
+# 83640 2.076 1.842 sample
+# 
