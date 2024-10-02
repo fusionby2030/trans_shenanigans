@@ -3,12 +3,13 @@
 #SBATCH --account=project_2009007
 #SBATCH --time=03:00:00
 #SBATCH --partition=medium 
-#SBATCH --array=1-10
-#SBATCH --ntasks=1
+## SBATCH --array=1-30
+## SBATCH --ntasks=1
 
 module load python-data
-python3 simple_full_run.py -shot_num=83624 -ccrash=1.456 -cgrowth=2.053 -probable=2 --loc_c_crash=0.5 --loc_c_growth=0.1
-
+# python3 simple_full_run.py -shot_num=83624 -ccrash=1.456 -cgrowth=2.053 -probable=2 --loc_c_crash=0.5 --loc_c_growth=0.2  # --total_time=0.1
+# python3 simple_full_run.py -shot_num=83625 -ccrash=2.902 -cgrowth=2.263 -probable=3 --loc_c_crash=0.8 --loc_c_growth=0.3  --total_time=1.0
+python3 simple_full_run.py -shot_num=83625 -ccrash=2.902 -cgrowth=2.263 -probable=0 --total_time=1.0
 # 83625 2.902 2.263 sample
 # 83628 1.043 2.053 sample
 # 83630 1.622 1.211 sample

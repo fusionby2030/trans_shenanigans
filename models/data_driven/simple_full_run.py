@@ -25,6 +25,7 @@ parser.add_argument('-probable', type=int, choices=[0, 1, 2, 3], default=0, help
 parser.add_argument('-savedir', type=str, default=LOCAL_SAVE_DIR, help='Where to store outputs')
 parser.add_argument('--loc_c_crash', type=float, default=0.1, help='Location parameter for resampling C_CRASH')
 parser.add_argument('--loc_c_growth', type=float, default=0.1, help='Location parameter for resampling C_GROWTH')
+parser.add_argument('--total_time', type=float, default=1.0, help='Total time to run simulation')
 
 # Parse arguments
 args = parser.parse_args()
@@ -36,6 +37,7 @@ C_GROWTH = args.cgrowth  # float(sys.argv[3])
 probabilistic_mode = args.probable
 SAMPLE_EVERY_CRASH = probabilistic_mode != 0
 SAVE_DIR = args.savedir
+total_sim_time = args.total_time
 
 save_dir = os.path.join(os.path.join(SAVE_DIR, f'{shot_num}'))
 if SAMPLE_EVERY_CRASH:
@@ -102,7 +104,7 @@ dt           = 0.0001 # half of tau_interelm
 tau_interelm = dt
 tau_intraelm = 200E-6
 
-total_sim_time = 1.00
+
 num_steps      = int(total_sim_time / dt) 
 savetimes      = np.linspace(0.0, total_sim_time, num_steps)
 
