@@ -184,6 +184,10 @@ best_c_growth, (scan_growths, tau_interelms_from_sim), evolution = find_optimal_
                                          CHI0_INTER, D0_INTER, machineparams)
 print(f'Best growth: {best_c_growth}')
 
+np.save(f'./outputs/{shot_num}_exp_interelmtimes.npy', tau_interelms_from_expdata)
+np.save(f'./outputs/{shot_num}_sim_interelmtimes.npy', tau_interelms_from_sim)
+np.save(f'./outputs/{shot_num}_scan_growths.npy', scan_growths)
+
 if PLOTTING:
     fig, axs = plt.subplots(2, 3, figsize=(14, 8))
     axs = axs.ravel()

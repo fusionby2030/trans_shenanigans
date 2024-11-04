@@ -48,6 +48,7 @@ def calculate_bohmdiffusion(T0, mps: MachineParameters):
     e        = 1.60218e-19    # C
     D_BOHM = (1.0/16.0) * (kev2j*T0) / (e * mps.BT)
     return D_BOHM
+
 def calculate_bohmgyrbohm_particlediffusion(T0: np.ndarray, mps: MachineParameters):
     kev2j    = 1.60218e-17    # J
     e        = 1.60218e-19    # C
@@ -93,6 +94,7 @@ class TransParams:
     te_outer_lim: float = 120.0
     dphi_normdr : np.ndarray = np.empty(0)
     mps         : MachineParameters = None
+    CHI_BASE: np.ndarray = None
     def _pinch_term(self, x: float) -> float: 
         return x**5
     
@@ -358,6 +360,26 @@ def get_chi_inter(x, initial_condition, temperature_steady_state, transparams: T
     else: 
         scaled_solution = solution.y[0] * factor(x, abs(transparams._C))
     return scaled_solution
+
+def get_chi_inter_base(x, initial_condition, temperature_steady_state, transparams: TransParams):
+    # Only solve for x > te_fit_params.p - te_fit_params.w
+    solution =  solve_ivp(
+        ode_system, 
+        [x[0], x[-1]],
+        [initial_condition],
+        args = (p_chi, r_chi, {'params': transparams}, {'params': transparams}),
+        t_eval=x,
+        method='RK45'
+    )
+    return solution.y[0]
+
+def scale_chi_inter(prev_solution, x, transparams: TransParams): 
+    factor = lambda phi_norm, c_scale: normal_distribution(phi_norm, transparams.te_fitparams.p, transparams.te_fitparams.w / 2.0, c_scale, 1.0) 
+    scaling = factor(x, transparams._C)
+    if transparams._C > 0.0: 
+        return prev_solution / scaling
+    else:
+        return prev_solution * scaling
 
 def get_chi_inter_unscaled(x, initial_condition, temperature_steady_state, transparams: TransParams):
     solution =  solve_ivp(
@@ -656,6 +678,75 @@ def setup_inter_params(xdomain: Domain, te_fit_params: FitParams, ne_fit_params:
     INTER_PARAMS.ne_outer_lim = ne_fit_params.steady_state_arr[-1] 
     return INTER_PARAMS
 
+def unended_c_growth_run_from_postelm_crash(time_total: float, xdomain: Domain, C_GROWTH: float,
+                                           post_elm_ne: np.ndarray, post_elm_te: np.ndarray, 
+                                           te_fit_params: FitParams, ne_fit_params: FitParams, 
+                                           CHI0_INTER: float, D0_INTER: float, machineparams: MachineParameters, 
+                                           printout: bool = False) -> float:
+    
+    INTER_PARAMS = TransParams(
+        CHI=np.empty_like(xdomain.phi_norm), 
+        D=np.empty_like(xdomain.phi_norm), 
+        V=xdomain.phi_norm**5, 
+        S_N=np.zeros_like(xdomain.phi_norm),
+        S_T=np.zeros_like(xdomain.phi_norm),
+        _C = get_c_inter_over_time(0.0, C_GROWTH),
+        ne_fitparams=ne_fit_params, 
+        te_fitparams=te_fit_params, 
+        bcs=BCS.INTER_FIXED, 
+        dphi_normdr=xdomain.dphi_normdr,
+        mps = machineparams
+    )
+
+    tau_interelm = 0.0001
+    in_pedestal = xdomain.phi_norm > 0.0
+
+    steady_state_pe = calculate_pressure(te_fit_params.steady_state_arr, ne_fit_params.steady_state_arr)
+    ALPHA_CRIT = np.max(abs(np.gradient(steady_state_pe[in_pedestal], xdomain.phi_norm[in_pedestal])))
+
+    current_ne = post_elm_ne
+    current_te = post_elm_te
+    current_pe = calculate_pressure(current_te, current_ne)
+
+    collected = [] 
+    current_time = 0.0 
+    while current_time < time_total:
+        dt = tau_interelm
+        t_internal = [current_time, current_time + dt]
+        INTER_PARAMS._C  = get_c_inter_over_time(current_time, C_GROWTH)
+        INTER_PARAMS.CHI = get_chi_inter(xdomain.phi_norm, CHI0_INTER, te_fit_params.steady_state_arr, INTER_PARAMS)
+        INTER_PARAMS.D   = get_d_inter(xdomain.phi_norm, D0_INTER, ne_fit_params.steady_state_arr, INTER_PARAMS)
+        
+        INTER_PARAMS.particlefluxout = -((D0_INTER)*np.gradient(ne_fit_params.steady_state_arr, xdomain.phi_norm)[-1]*xdomain.dphi_normdr[-1] + INTER_PARAMS.V[-1]*ne_fit_params.steady_state_arr[-1])
+        INTER_PARAMS.ne_outer_lim = ne_fit_params.steady_state_arr[-1] 
+
+        solutions_interelm_te = solve_pde(xdomain.phi_norm, current_te, t_internal, INTER_PARAMS, T_model)
+        solutions_interelm_ne = solve_pde(xdomain.phi_norm, current_ne, t_internal, INTER_PARAMS, n_model)
+
+        current_te = solutions_interelm_te[:, -1]
+        current_ne = solutions_interelm_ne[:, -1]
+        current_pe = calculate_pressure(current_te, current_ne)
+        alpha_exp = np.max(abs(np.gradient(current_pe, xdomain.phi_norm)))
+        current_time += dt
+        if printout: 
+            print(f"Current Time: {current_time:.4}, Alpha Exp: {alpha_exp:.4}, Alpha Crit: {ALPHA_CRIT:.4}, C_INTER: {INTER_PARAMS._C:.4}")
+        collect = (current_time, current_te, current_ne, current_pe)
+        collected.append(collect)
+        
+    all_times = np.empty(len(collected))
+    all_te = np.empty((len(collected), len(xdomain.phi_norm)))
+    all_ne = np.empty((len(collected), len(xdomain.phi_norm)))
+    all_pe = np.empty((len(collected), len(xdomain.phi_norm)))
+    for nt, collect in enumerate(collected): 
+        time, te, ne, pe = collect
+        all_times[nt] = time
+        all_te[nt] = te
+        all_ne[nt] = ne
+        all_pe[nt] = pe
+    colection = (all_times, all_te, all_ne, all_pe)
+    return current_time, colection
+
+
 def single_c_growth_run_from_postelm_crash(xdomain: Domain, C_GROWTH: float,
                                            post_elm_ne: np.ndarray, post_elm_te: np.ndarray, 
                                            te_fit_params: FitParams, ne_fit_params: FitParams, 
@@ -685,6 +776,8 @@ def single_c_growth_run_from_postelm_crash(xdomain: Domain, C_GROWTH: float,
     current_te = post_elm_te
     current_pe = calculate_pressure(current_te, current_ne)
 
+    # INTER_PARAMS.CHI_BASE = get_chi_inter_base(xdomain.phi_norm, CHI0_INTER, te_fit_params.steady_state_arr, INTER_PARAMS)
+
     current_time = 0.0
     alpha_exp = np.max(abs(np.gradient(current_pe, xdomain.phi_norm)))
     collected = []
@@ -709,11 +802,11 @@ def single_c_growth_run_from_postelm_crash(xdomain: Domain, C_GROWTH: float,
         current_pe = calculate_pressure(current_te, current_ne)
         alpha_exp = np.max(abs(np.gradient(current_pe, xdomain.phi_norm)))
         current_time += dt
-        # Check if alpha_exp is greater than ALPHA_CRIT
         if printout: 
             print(f"Current Time: {current_time:.4}, Alpha Exp: {alpha_exp:.4}, Alpha Crit: {ALPHA_CRIT:.4}, C_INTER: {INTER_PARAMS._C:.4}")
         collect = (current_time, current_te, current_ne, current_pe)
         collected.append(collect)
+        
 
     all_times = np.empty(len(collected))
     all_te = np.empty((len(collected), len(xdomain.phi_norm)))
@@ -745,6 +838,7 @@ def find_optimal_c_growth(tau_interelm_from_exp: float,
         time_to_alpha_crit, collect = single_c_growth_run_from_postelm_crash(xdomain, C_GROWTH, post_elm_ne.copy(), post_elm_te.copy(), te_fit_params, ne_fit_params, CHI0_INTER, D0_INTER, machineparams)
         tau_interelm_from_sim[n] = time_to_alpha_crit    
         collection.append(collect)
+        print(f"Time to alpha crit: {time_to_alpha_crit:.4}, C_Growth: {C_GROWTH:.4}")
     # find c_growth most similar to tau_interelm_from_exp
     best_c_growth_idx = np.argmin(abs(tau_interelm_from_sim - tau_interelm_from_exp))
     best_c_growth = scan_growths[best_c_growth_idx]

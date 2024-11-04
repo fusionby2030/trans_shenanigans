@@ -1,0 +1,30 @@
+---
+title: "Recap from last beating the pedestal"
+format:
+  pdf:
+    colorlinks: true
+---
+
+### Review of simulation 
+
+
+### Where we left off
+- Improving the simulation, updating the flux in/flux out boundary conditions with source resevoir
+    - All particles ejecteds during the ELM crash should recylce back into the plasma. 
+    - The density source term, when integrated over the full ELM cycle, would remain constant. 
+    - Rate of refuelling/loss should scale with the parameters $C_{ETB}$, $C_{CRASH}$. 
+    - Inter-ELM phase, should have $S \propto 1/n$.
+    - Could be modified to be $1/(n^C_{ETB})$, and the inter-ELM diffusion fixed in time based on EPED/Critical gradient model while the sources change in time.
+
+- Generative modeling
+    - Generate data using the simulation 
+    - Use the sparse HRTS data
+    - Somehow condition or combine the two to learn a 'reality-gap' model. 
+
+
+### New Questions after last meeting 
+
+- Simulation
+  - Resevoir is quickly depleted with source on the order of $10^{20}$ particles per second.
+  - Still need to scale diffusion to get variable tau inter elm
+
