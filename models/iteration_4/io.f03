@@ -1,2 +1,0 @@
-MODULE io
-END MODULE IO
